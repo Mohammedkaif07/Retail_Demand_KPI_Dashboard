@@ -1,0 +1,200 @@
+using UnityEngine;
+using UnityEngine.AI;
+
+public class RobotController : MonoBehaviour
+{
+    [SerializeField] private WheelCollider WCFrontLeft; // Front left wheel collider
+    [SerializeField] private WheelCollider WCFrontRight; // Front right wheel collider
+    [SerializeField] private WheelCollider WCBackLeft; // Back left wheel collider
+    [SerializeField] private WheelCollider WCBackRight; // Back right wheel collider
+
+    [SerializeField] private Transform WTFrontLeft; // Front left wheel transform
+    [SerializeField] private Transform WTFrontRight; // Front right wheel transform
+    [SerializeField] private Transform WTBackLeft; // Back left wheel transform
+    [SerializeField] private Transform WTBackRight; // Back right wheel transform
+
+    [SerializeField] private Transform RCFR; // Raycast front reference
+    [SerializeField] private Transform RCL1; // Raycast left 1
+    [SerializeField] private Transform RCL2; // Raycast left 2
+    [SerializeField] private Transform RCL3; // Raycast left 3
+    [SerializeField] private Transform RCR1; // Raycast right 1
+    [SerializeField] private Transform RCR2; // Raycast right 2
+    [SerializeField] private Transform RCR3; // Raycast right 3
+    [SerializeField] private Transform AGOR; // Above ground orientation reference
+
+    public Transform[] sensors; // Array of sensors
+    private NavMeshAgent navMeshAgent;
+    public Transform Target;
+    private float steerAngle = 30f;
+    private float motorForce;
+    private float velocity;
+    private Rigidbody rb;
+
+    void Start()
+    {
+        InitializeComponents();
+    }
+
+    void FixedUpdate()
+    {
+        UpdateSensorData();
+        AvoidObstacles();
+        AdjustMotorForce();
+        MoveRobot();
+        CheckTargetReached();
+        UpdateVelocity();
+    }
+
+    void InitializeComponents()
+    {
+        navMeshAgent = GetComponent<NavMeshAgent>();
+        rb = GetComponent<Rigidbody>();
+    }
+
+    void UpdateSensorData()
+    {
+        foreach (Transform sensor in sensors)
+        {
+            UpdateSensorRaycast(sensor);
+        }
+    }
+
+    void UpdateSensorRaycast(Transform sensor)
+    {
+        Vector3 rayDirection = sensor.forward;
+        RaycastHit hit;
+        if (Physics.Raycast(sensor.position, rayDirection, out hit))
+        {
+            UpdateSensor(sensor.name, hit.transform);
+        }
+    }
+
+    void UpdateSensor(string sensorName, Transform hitTransform)
+    {
+        switch (sensorName)
+        {
+            case "RCFR":
+                RCFR = hitTransform;
+                break;
+            case "RCL1":
+                RCL1 = hitTransform;
+                break;
+            case "RCL2":
+                RCL2 = hitTransform;
+                break;
+            case "RCL3":
+                RCL3 = hitTransform;
+                break;
+            case "RCR1":
+                RCR1 = hitTransform;
+                break;
+            case "RCR2":
+                RCR2 = hitTransform;
+                break;
+            case "RCR3":
+                RCR3 = hitTransform;
+                break;
+        }
+    }
+
+    void AvoidObstacles()
+    {
+        const float maxDistance = 10f;
+        const float maxSteerAngle = 4000f;
+        const float avoidMultiplier = 2f;
+
+        float[] sensorDistances = {
+            RCL1.position.magnitude, RCL2.position.magnitude, RCL3.position.magnitude,
+            RCR1.position.magnitude, RCR2.position.magnitude, RCR3.position.magnitude
+        };
+
+        float closestObstacle = Mathf.Min(sensorDistances);
+        float steerAngle = 0f;
+
+        if (closestObstacle < maxDistance)
+        {
+            steerAngle = Mathf.Lerp(0, maxSteerAngle, 1 - (closestObstacle / maxDistance)) * avoidMultiplier;
+        }
+
+        ApplySteerAngle(steerAngle);
+    }
+
+    void ApplySteerAngle(float steerAngle)
+    {
+        WCFrontLeft.steerAngle = steerAngle;
+        WCFrontRight.steerAngle = steerAngle;
+
+        ApplyMotorTorque();
+    }
+
+    void ApplyMotorTorque()
+    {
+        WCFrontLeft.motorTorque = motorForce;
+        WCFrontRight.motorTorque = motorForce;
+        WCBackLeft.motorTorque = motorForce;
+        WCBackRight.motorTorque = motorForce;
+    }
+
+    void MoveRobot()
+    {
+        navMeshAgent.SetDestination(Target.position);
+        VisualizeWheelMovement();
+    }
+
+    void VisualizeWheelMovement()
+    {
+        RotateWheel(WCFrontLeft, WTFrontLeft);
+        RotateWheel(WCFrontRight, WTFrontRight);
+        RotateWheel(WCBackLeft, WTBackLeft);
+        RotateWheel(WCBackRight, WTBackRight);
+    }
+
+    void RotateWheel(WheelCollider collider, Transform visualWheel)
+    {
+        Vector3 position;
+        Quaternion rotation;
+        collider.GetWorldPose(out position, out rotation);
+
+        visualWheel.position = position;
+        visualWheel.rotation = rotation;
+    }
+
+    void CheckTargetReached()
+    {
+        if (Vector3.Distance(transform.position, Target.position) < 3.5)
+        {
+            HandleTargetReached();
+        }
+    }
+
+    void HandleTargetReached()
+    {
+        Debug.Log("Target reached");
+        DisableComponents();
+    }
+
+    void DisableComponents()
+    {
+        navMeshAgent.enabled = false;
+        GetComponent<RobotController>().enabled = false;
+        rb.isKinematic = true;
+    }
+
+    void UpdateVelocity()
+    {
+        velocity = rb.velocity.magnitude;
+        AdjustMotorForce();
+    }
+
+    void AdjustMotorForce()
+    {
+        if (velocity < 2 && motorForce < 50)
+        {
+            motorForce += 0.4f;
+        }
+        if (velocity > 4 && motorForce > 0)
+        {
+            motorForce -= 0.4f;
+        }
+    }
+}
